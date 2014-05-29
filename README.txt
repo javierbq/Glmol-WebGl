@@ -48,45 +48,14 @@ Currently GLmol has following features. More is coming...
 * Perspective or Orthographic projection
 * Take screenshot
 
-== System requirements ==
+To run the app:
 
-GLmol runs on newer versions of Firefox, Chrome, Safari or
-Opera. Internet Explorer is not supported because IE doesn't implement
-WebGL. Safari users have to enable WebGL manually (see below). Some
-old video cards are blacklisted by browsers due to insufficient
-compatibility. You can still force enable WebGL as shown below, but
-GLmol might not work. 
+Clone the repository in your local directory.
 
-GLmol runs on Sony Ericsson's Android devices
-which support WebGL. Support for Firefox Mobile is currently
-underway. Reportedly, GLmol also runs on WebGL enabled safari in iOS.
+run 'npm install'
+ 
+run 'cd app'
 
-== Troubleshooting ==
+run 'npm install consolidate'
 
-If you see only black screen and you are using
-
- Internet Explorer: sorry. IE doesn't support WebGL.
- Firefox (version 4 or later): try force enable WebGL. 
-   https://wiki.mozilla.org/Blocklisting/Blocked_Graphics_Drivers#How_to_force-enable_blocked_graphics_features
- Chrome: try force enable WebGL.
-   http://www.google.com/support/forum/p/Chrome/thread?tid=4b9244822aa2f2e0&hl=en
- Safari: enable WebGL.
-   https://discussions.apple.com/thread/3300585?start=0&tstart=0
-
-== How to embed ==
-
-Currently, documentation is not ready.
-Please examine the source code of "embedding-examplesEN.html"
-If it is not clear, don't hesitate to ask me.
-
-Please note that Same-Origin-Policy applies to XmlHttpRequest so that
-GLmol can load PDB files only from the same server as the program or
-RCSB PDB. You can also embed whole PDB file in a HTML file.
- (see triiodotyrosine example)
-
-== Contact ==
-
-Project website is located at http://webglmol.sourceforge.jp/
-
-Comments and suggestions are welcome at http://sourceforge.jp/projects/webglmol/forums/ or 
-biochem_fan@users.sourceforge.jp 
+run 'nodemon server.js'
