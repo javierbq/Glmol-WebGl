@@ -35,12 +35,12 @@ THREE.Matrix4.prototype.isIdentity = function() {
 };
 
 var GLmol = (function() {
-function GLmol(id, suppressAutoload) {
-   if (id) this.create(id, suppressAutoload);
+   function GLmol(id, suppressAutoload, force2d) {
+   if (id) this.create(id, suppressAutoload, force2d);
    return true;
 }
 
-GLmol.prototype.create = function(id, suppressAutoload) {
+GLmol.prototype.create = function(id, suppressAutoload, force2d) {
    this.Nucleotides = ['  G', '  A', '  T', '  C', '  U', ' DG', ' DA', ' DT', ' DC', ' DU'];
    this.ElementColors = {"H": 0xCCCCCC, "C": 0xAAAAAA, "O": 0xCC0000, "N": 0x0000CC, "S": 0xCCCC00, "P": 0x6622CC,
                          "F": 0x00CC00, "CL": 0x00CC00, "BR": 0x882200, "I": 0x6600AA,
@@ -58,14 +58,24 @@ GLmol.prototype.create = function(id, suppressAutoload) {
    this.ASPECT = this.WIDTH / this.HEIGHT;
    this.NEAR = 1, FAR = 800;
    this.CAMERA_Z = -150;
-   this.renderer = new THREE.WebGLRenderer({antialias: true});
-   this.renderer.sortObjects = false; // hopefully improve performance
+   this.webglFailed = true;
+   try {
+      if (force2d) throw "WebGL disabled";
+      this.renderer = new THREE.WebGLRenderer({antialias: true});
+      this.renderer.sortObjects = false; // hopefully improve performance
    // 'antialias: true' now works in Firefox too!
    // setting this.aaScale = 2 will enable antialias in older Firefox but GPU load increases.
-   this.renderer.domElement.style.width = "100%";
-   this.renderer.domElement.style.height = "100%";
-   this.container.append(this.renderer.domElement);
-   this.renderer.setSize(this.WIDTH, this.HEIGHT);
+      this.renderer.domElement.style.width = "100%";
+      this.renderer.domElement.style.height = "100%";
+      this.container.append(this.renderer.domElement);
+      this.renderer.setSize(this.WIDTH, this.HEIGHT);
+      this.webglFailed = false;
+   } catch (e) {
+      this.canvas2d = $('<canvas></canvas');
+      this.container.append(this.canvas2d);
+      this.canvas2d[0].height = this.HEIGHT;
+      this.canvas2d[0].width = this.WIDTH;
+   }
 
    this.camera = new THREE.PerspectiveCamera(20, this.ASPECT, 1, 800); // will be updated anyway
    this.camera.position = new TV3(0, 0, this.CAMERA_Z);
@@ -79,10 +89,15 @@ GLmol.prototype.create = function(id, suppressAutoload) {
    $(window).resize(function() { // only window can capture resize event
       self.WIDTH = self.container.width() * self.aaScale;
       self.HEIGHT = self.container.height() * self.aaScale;
-      self.ASPECT = self.WIDTH / self.HEIGHT;
-      self.renderer.setSize(self.WIDTH, self.HEIGHT);
-      self.camera.aspect = self.ASPECT;
-      self.camera.updateProjectionMatrix();
+      if (!self.webglFailed) {
+         self.ASPECT = self.WIDTH / self.HEIGHT;
+         self.renderer.setSize(self.WIDTH, self.HEIGHT);
+         self.camera.aspect = self.ASPECT;
+         self.camera.updateProjectionMatrix();
+      } else {
+         self.canvas2d[0].height = self.HEIGHT;
+         self.canvas2d[0].width = self.WIDTH;
+      }
       self.show();
    });
 
@@ -1503,7 +1518,7 @@ GLmol.prototype.setView = function(arg) {
 GLmol.prototype.setBackground = function(hex, a) {
    a = a | 1.0;
    this.bgColor = hex;
-   this.renderer.setClearColorHex(hex, a);
+   if (this.renderer) this.renderer.setClearColorHex(hex, a);
    this.scene.fog.color = new TCo(hex);
 };
 
@@ -1600,7 +1615,7 @@ GLmol.prototype.setSlabAndFog = function() {
 };
 
 GLmol.prototype.enableMouse = function() {
-   var me = this, glDOM = $(this.renderer.domElement); 
+   var me = this, glDOM = $(this.container);
 
    // TODO: Better touch panel support. 
    // Contribution is needed as I don't own any iOS or Android device with WebGL support.
@@ -1668,6 +1683,7 @@ GLmol.prototype.enableMouse = function() {
       } else if (mode == 1 || me.mouseButton == 2 || ev.ctrlKey) { // Translate
          var scaleFactor = (me.rotationGroup.position.z - me.CAMERA_Z) * 0.85;
          if (scaleFactor < 20) scaleFactor = 20;
+         if (me.webglFailed) { dx *= -1; dy *= -1;}
          var translationByScreen = new TV3(- dx * scaleFactor, - dy * scaleFactor, 0);
          var q = me.rotationGroup.quaternion;
          var qinv = new THREE.Quaternion(q.x, q.y, q.z, q.w).inverse().normalize(); 
@@ -1680,7 +1696,7 @@ GLmol.prototype.enableMouse = function() {
          me.dq.x = Math.cos(r * Math.PI); 
          me.dq.y = 0;
          me.dq.z =  rs * dx; 
-         me.dq.w =  rs * dy;
+         me.dq.w =  rs * dy; 
          me.rotationGroup.quaternion = new THREE.Quaternion(1, 0, 0, 0); 
          me.rotationGroup.quaternion.multiplySelf(me.dq);
          me.rotationGroup.quaternion.multiplySelf(me.cq);
@@ -1695,8 +1711,93 @@ GLmol.prototype.show = function() {
 
    var time = new Date();
    this.setSlabAndFog();
-   this.renderer.render(this.scene, this.camera);
+   if (!this.webglFailed) this.renderer.render(this.scene, this.camera);
+   else this.render2d();
    console.log("rendered in " + (+new Date() - time) + "ms");
+};
+
+GLmol.prototype.render2d = function() {
+  var ctx = this.canvas2d[0].getContext("2d");  
+  this.scene.updateMatrixWorld();
+  ctx.fillRect(0, 0, this.WIDTH, this.HEIGHT);
+  ctx.save();
+
+  ctx.translate(this.WIDTH / 2, this.HEIGHT / 2);
+  ctx.scale(30, 30);
+  ctx.lineCap = "round";
+  var mvMat = new THREE.Matrix4();
+  mvMat.multiply(this.camera.matrixWorldInverse, this.modelGroup.matrixWorld);
+//  var pmvMat = new THREE.Matrix4();
+//  pmvMat.multiply(this.camera.projectionMatrix, mvMat);
+
+  var PI2 = Math.PI * 2;
+  var toDraw = [];
+  var atoms = this.atoms;
+  for (var i = 0, ilim = this.atoms.length; i < ilim; i++) {
+      var atom = atoms[i];
+      if (atom == undefined) continue;
+  
+      if (atom.screen == undefined) atom.screen = new THREE.Vector3;
+      atom.screen.set(atom.x, atom.y, atom.z);
+      /*p*/mvMat.multiplyVector3(atom.screen);
+      if (!this.webglFailed) atom.screen.y *= -1; // plus direction of y-axis: up in OpenGL, down in Canvas
+
+      toDraw.push([false, atom.screen.z, i]);
+  }
+
+  // TODO: do it in 1-pass
+  for (var i = 0, ilim = this.atoms.length; i < ilim; i++) {
+      var atom = atoms[i];
+      if (atom == undefined) continue;
+
+      for (var j = 0, jlim = atom.bonds.length; j < jlim; j++) {
+         var atom2 = atoms[atom.bonds[j]];
+         if (atom2 == undefined) continue;
+         if (atom.serial > atom2.serial) continue;
+
+         toDraw.push([true, (atom.screen.z + atom2.screen.z) / 2, i, atom.bonds[j]]);
+      }
+  }
+
+  toDraw.sort(function(l, r) {
+     return l[1] - r[1];
+  });
+
+  for (var i = 0, ilim = toDraw.length; i < ilim; i++) {
+      var atom = atoms[toDraw[i][2]];
+      if (!toDraw[i][0]) {
+         ctx.fillStyle = "rgb(" + (atom.color >> 16) + "," + (atom.color >> 8 & 255) + 
+                    "," + (atom.color & 255) + ")";
+         ctx.lineWidth = 0.03;
+         ctx.beginPath();
+         ctx.arc(atom.screen.x, atom.screen.y, 0.4, 0, PI2, true);
+         ctx.closePath();
+         ctx.fill();
+         ctx.strokeStyle ="#000000";
+         ctx.stroke();
+      } else {
+        var atom2 = atoms[toDraw[i][3]];
+        ctx.lineWidth = 0.3;
+        var cx = (atom.screen.x + atom2.screen.x) / 2;
+        var cy = (atom.screen.y + atom2.screen.y) / 2;
+        ctx.strokeStyle = "rgb(" + (atom.color >> 16) + "," + (atom.color >> 8 & 255) + 
+                   "," + (atom.color & 255) + ")";
+        ctx.beginPath();
+        ctx.moveTo(atom.screen.x, atom.screen.y);
+        ctx.lineTo(cx, cy);
+        ctx.closePath(); 
+        ctx.stroke();
+        ctx.strokeStyle = "rgb(" + (atom2.color >> 16) + "," + (atom2.color >> 8 & 255) + 
+                   "," + (atom2.color & 255) + ")";
+        ctx.beginPath();
+        ctx.moveTo(atom2.screen.x, atom2.screen.y);
+        ctx.lineTo(cx, cy);
+        ctx.closePath(); 
+        ctx.stroke();
+      }
+  }
+
+  ctx.restore();
 };
 
 // For scripting
